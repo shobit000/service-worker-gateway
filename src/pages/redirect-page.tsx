@@ -40,9 +40,15 @@ function RedirectPage ({ showConfigIframe = true }: { showConfigIframe?: boolean
   const [isLoadingContent, setIsLoadingContent] = useState(false)
 
   useEffect(() => {
-    if (isConfigPage(window.location.hash)) {
-      setReloadUrl(window.location.href.replace('#/ipfs-sw-config', ''))
-    }
+  if (subdomainRedirectUrl != null && window.location.href !== subdomainRedirectUrl) {
+    /**
+     * We're at a domain with ?helia-sw=, we can reload the page so the service worker will
+     * capture the request
+     */
+    const queryParams = window.location.search
+    window.location.replace(`${subdomainRedirectUrl}${queryParams}`)
+  }
+}, [subdomainRedirectUrl])
 
     async function doWork (config: ConfigDb): Promise<void> {
       try {
