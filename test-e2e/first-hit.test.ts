@@ -1,9 +1,28 @@
 import { test, expect } from './fixtures/config-test-fixtures.js'
 
 test.describe('first-hit ipfs-hosted', () => {
-  /**
-   * "ipfs-hosted" tests verify that when the _redirects is hit and redirects to the <root>?helia-sw=<path> that navigation is handled correctly.
-   */
+  test('redirects to ?helia-sw=<path> with query params are handled', async ({ page }) => {
+    const response = await page.goto('http://127.0.0.1:3334/ipfs/bafkqablimvwgy3y?format=car')
+
+    expect(response?.url()).toBe('http://127.0.0.1:3334/?helia-sw=/ipfs/bafkqablimvwgy3y&format=car')
+    expect(response?.status()).toBe(200)
+    
+    await page.waitForSelector('.loading-page', { state: 'detached' })
+    await page.waitForSelector('text=hello', { timeout: 25000 })
+  })
+})
+
+test.describe('subdomain-routing', () => {
+  test('redirects to ?helia-sw=<path> with query params are handled', async ({ page, rootDomain, protocol }) => {
+    const response = await page.goto('http://localhost:3334/ipfs/bafkqablimvwgy3y?format=car')
+
+    expect(response?.url()).toBe('http://localhost:3334/?helia-sw=/ipfs/bafkqablimvwgy3y&format=car')
+    expect(response?.status()).toBe(200)
+    
+    await page.waitForSelector('.loading-page', { state: 'detached' })
+    await page.waitForSelector('text=hello', { timeout: 25000 })
+  })
+})
   test.describe('path-routing', () => {
     test.beforeAll(async ({ rootDomain }) => {
       if (!rootDomain.includes('localhost')) {
