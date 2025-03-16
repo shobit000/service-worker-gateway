@@ -273,12 +273,76 @@ function isRootRequestForContent (event: FetchEvent): boolean {
   return isRootRequest // && getCidFromUrl(event.request.url) != null
 }
 
-function isSubdomainRequest (event: FetchEvent): boolean {
+function isSubdomainRequest(event: FetchEvent): boolean {
   const { id, protocol } = getSubdomainParts(event.request.url)
   log.trace('isSubdomainRequest.id: ', id)
   log.trace('isSubdomainRequest.protocol: ', protocol)
 
   return id != null && protocol != null
+}
+
+async function requestRouting(event: FetchEvent, url: URL): Promise<boolean> {
+  if (await isTimebombExpired()) {
+    log.trace('timebomb expired, deregistering service worker')
+    event.waitUntil(deregister(event, false))
+    return false
+  } else if (isDeregisterRequest(event.request.url)) {
+    event.waitUntil(deregister(event))
+    return false
+  } else if (isConfigPageRequest(url)) {
+    log.trace('config page request, ignoring ', event.request.url)
+    return false
+  } else if (isSwConfigReloadRequest(event)) {
+    log.trace('sw-config reload request, updating verifiedFetch')
+    event.waitUntil(updateVerifiedFetch().then(() => {
+      log.trace('sw-config reload request, verifiedFetch updated')
+    }).catch((err) => {
+      log.error('sw-config reload request, error updating verifiedFetch', err)
+    }))
+    return false
+  } else if (isSwConfigGETRequest(event)) {
+    log.trace('sw-config GET request')
+    event.waitUntil(new Promise<void>((resolve) => {
+      event.respondWith(new Response(JSON.stringify(config), {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }))
+      resolve()
+    }))
+    return false
+  } else if (isSwAssetRequest(event)) {
+    log.trace('sw-asset request, returning cached response ', event.request.url)
+    /**
+     * Return the asset from the cache if it exists, otherwise fetch it.
+     */
+    event.respondWith(caches.open(CURRENT_CACHES.swAssets).then(async (cache) => {
+      const cachedResponse = await cache.match(event.request)
+      if (cachedResponse != null) {
+        return cachedResponse
+      }
+      const response = await fetch(event.request)
+      await cache.put(event.request, response.clone())
+      return response
+    }))
+    return false
+  } else if (!isValidRequestForSW(event)) {
+    log.trace('not a valid request for helia-sw, ignoring ', event.request.url)
+    return false
+  } else if (url.href.includes('bafkqaaa.ipfs')) {
+    /**
+     * `bafkqaaa` is an empty inline CID, so this response *is* valid, and prevents additional network calls.
+     *
+     * @see https://github.com/ipfs-shipyard/helia-service-worker-gateway/pull/151#discussion_r1536562347
+     */
+    event.respondWith(new Response('', { status: 200 }))
+    return false
+  }
+
+  if (isRootRequestForContent(event) || isSubdomainRequest(event)) {
+    return true
+  }
+  return false
 }
 
 function isConfigPageRequest (url: URL): boolean {
